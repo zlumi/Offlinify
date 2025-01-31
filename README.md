@@ -6,10 +6,6 @@ Creating this with the intention of allowing study resources to be accessible on
 
 Enjoy!
 
-## Installation
-
-The extension calls `chrome.debugger.attach()` on a tab to capture network events when you click the extension's action button. The response data is logged in the developer console, to demonstrate extracting a network response's data such as the request headers and URL.
-
 ## Running this extension
 
 1. Clone this repository.
