@@ -1,0 +1,61 @@
+<!-- a 400(height)x300(width) page for scrolling over the references & letting the user choose a filter -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Filter Select</title>
+    <link rel="stylesheet" type="text/css" href="style.css" />
+    <meta charset="UTF-8" />
+    <style>
+      #references {
+        width: 90vw;
+        height: calc(100vh - 150px);
+        border: 1px solid;
+        overflow-y: scroll;
+        overflow-x: hidden;
+      }
+
+      .domain {
+        cursor: pointer;
+        border: 1px solid;
+      }
+
+      .domain::after {
+        content: "▼";
+        float: right;
+        margin-right: 10px;
+      }
+
+      .links {
+        display: none;
+        padding-top: 0;
+        padding-left: 20px;
+        margin-bottom: 20px;
+      }
+
+      .links a {
+        display: block;
+        text-decoration: none;
+      }
+
+      #filter {
+        position: fixed;
+        bottom: 5px;
+        width: 90vw;
+        border: 1px solid;
+      }
+
+      .covered {
+        background-color: #103603;
+      }
+
+      .partially-covered {
+        background-color: #674100;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="references"></div>
+    <input type="text" id="filter" placeholder="Filter" />
+    <script src="filter-select.js"></script>
+  </body>
+</html>

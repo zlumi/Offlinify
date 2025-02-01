@@ -84,24 +84,24 @@ export async function downloadSinglePage(tab) {
 
   var newHtml = html;
 
-  // for (const dependency of dependencies) {
-  //   try {
-  //     const response = await fetch(dependency);
-  //     const blob = await response.blob();
-  //     const dataUrl = await blobToDataURL(blob);
-  //     const fileName = localEncode(dependency.split("?")[0]);
+  for (const dependency of dependencies) {
+    try {
+      const response = await fetch(dependency);
+      const blob = await response.blob();
+      const dataUrl = await blobToDataURL(blob);
+      const fileName = localEncode(dependency.split("?")[0]);
 
-  //     chrome.downloads.download({
-  //       url: dataUrl,
-  //       filename: `${folderName}/assets/${fileName}`,
-  //       saveAs: false,
-  //       conflictAction: "overwrite",
-  //     });
-  //     newHtml = newHtml.replace(dependency, `assets/${fileName}`);
-  //   } catch (error) {
-  //     console.error("download failed! ", dependency, error);
-  //   }
-  // }
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: `${folderName}/assets/${fileName}`,
+        saveAs: false,
+        conflictAction: "overwrite",
+      });
+      newHtml = newHtml.replace(dependency, `assets/${fileName}`);
+    } catch (error) {
+      console.error("download failed! ", dependency, error);
+    }
+  }
 
   try {
     const blob = new Blob([newHtml], { type: "text/html" });
@@ -126,4 +126,6 @@ export async function downloadSinglePage(tab) {
   } catch (error) {
     console.error("html failed to save! ", error);
   }
+
+  return references;
 }
