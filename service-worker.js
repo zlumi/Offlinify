@@ -21,11 +21,30 @@ chrome.action.onClicked.addListener(async function (tab) {
         'link[rel="stylesheet"], link[href]');
       const srcDependencies = findDependencies(document, 'src',
         'script[src], img[src], video[src], audio[src], source[src], track[src], iframe[src], frame[src]');
-
       const dependencies = [...hrefDependencies, ...srcDependencies];
 
-      let html = document.documentElement.outerHTML;
+      const getAbsoluteOuterHTML = () => {
+        const docClone = document.documentElement.cloneNode(true);
+        const baseURL = window.location.origin;
+    
+        function makeAbsolute(node, attr) {
+            if (node.hasAttribute(attr)) {
+                const url = node.getAttribute(attr);
+                if (url && !url.startsWith('http') && !url.startsWith('data:') && !url.startsWith('javascript:')) {
+                    node.setAttribute(attr, new URL(url, baseURL).href);
+                }
+            }
+        }
+    
+        docClone.querySelectorAll('[href]').forEach(el => makeAbsolute(el, 'href'));
+        docClone.querySelectorAll('[src]').forEach(el => makeAbsolute(el, 'src'));
+    
+        return docClone.outerHTML;
+      }
+      const html = getAbsoluteOuterHTML();
+      
       let references = Array.from(new Set(Array.from(document.querySelectorAll('a[href]')).map((a) => a.href)));
+
       return { html, references, dependencies };
     }
   });
@@ -35,25 +54,26 @@ chrome.action.onClicked.addListener(async function (tab) {
   }
 
   const { html, references, dependencies } = jsInject.result;
-  var newHtml = html;
 
   const url = new URL(tab.url);
   const folderName = localEncode(url.hostname) + "/" + localEncode(url.pathname);
-  const assetsFolder = `${folderName}/assets`;
+
+  var newHtml = html;
 
   for (const dependency of dependencies) {
     try {
       const response = await fetch(dependency);
       const blob = await response.blob();
       const dataUrl = await blobToDataURL(blob);
-      const fileName = localEncode(dependency);
+      const fileName = localEncode(dependency.split('?')[0]);
 
       chrome.downloads.download({
         url: dataUrl,
-        filename: `${assetsFolder}/${fileName}`,
+        filename: `${folderName}/assets/${fileName}`,
         saveAs: false,
         conflictAction: 'overwrite'
       });
+      newHtml = newHtml.replace(dependency, `assets/${fileName}`);
     } catch (error) {
       console.error("download failed! ", dependency, error);
     }
