@@ -16,7 +16,14 @@ async function blobToDataURL(blob) {
   });
 }
 
-export async function crawl(tab, dependenciesCollection, folderName, filter = null) {
+export async function crawl(tab, dependenciesCollection, folderName, filter = null, crawled = new Set()) {
+  while (tab.status !== "complete") {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    tab = await chrome.tabs.get(tab.id);
+  }
+  crawled.add(tab.url.split('?')[0]);
+  console.log("Crawling: ", tab.url);
+
   let [jsInject] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: () => {
@@ -73,14 +80,17 @@ export async function crawl(tab, dependenciesCollection, folderName, filter = nu
       };
       const html = getAbsoluteOuterHTML();
 
-      console.log(html, dependencies);
-
-      const unfilteredReferences = Array.from(document.querySelectorAll("a[href]"))
-        .map((a) => a.href)
+      const unfilteredReferences = Array.from(new Set(
+        Array.from(document.querySelectorAll("a[href]"))
+          .map((a) => a.href)
+          .filter((href) => href.startsWith("http"))
+      ));
 
       return { html, unfilteredReferences, dependencies };
     },
   });
+
+  // 3 - Filter the references
 
   const { unfilteredReferences } = jsInject.result;
 
@@ -100,19 +110,19 @@ export async function crawl(tab, dependenciesCollection, folderName, filter = nu
         if (message.filter) {
           filter = message.filter;
         }
+        sendResponse({ filter });
       };
-
       chrome.runtime.onMessage.addListener(filterSubmissionListener);
 
-      chrome.windows.onRemoved.addListener(function windowCloseListener(windowId) {
+      chrome.windows.onRemoved.addListener(async function windowCloseListener(windowId) {
         if (windowId === popupWindowId) {
           chrome.runtime.onMessage.removeListener(filterSubmissionListener);
           chrome.windows.onRemoved.removeListener(windowCloseListener);
           if (!filter) {
-            notify("Offlinifying", "Cancelled (no filter selected)");
+            await notify("Offlinifying", "Cancelled (no filter selected)");
             return;
           } else {
-            notify("Offlinifying", `Filter: ${filter}`, tab.url);
+            await notify("Offlinifying", `Filter: ${filter}`, tab.url);
           }
         }
       });
@@ -123,12 +133,60 @@ export async function crawl(tab, dependenciesCollection, folderName, filter = nu
     }
   }
 
-  console.log(filter);
+  // var { html, dependencies } = jsInject.result;
 
-  // TODO:
-  // FILTER,
-  // CRAWL RECURSIVELY (WHILE DOWNLOADING THE HTMLS& REPATHING DEPENDENCIES),
-  // DOWNLOAD DEPENDENCIES
+  // for (const dependency of dependencies) {
+  //   try {
+  //     const fileName = localEncode(dependency);
+  //     html = html.replace(dependency, `assets/${fileName}`);
+  //     if (!dependenciesCollection.has(dependency)) dependenciesCollection.add(dependency);
+  //   } catch (error) {
+  //     console.error("download failed! ", dependency, error);
+  //   }
+  // }
+
+  // try {
+  //   const blob = new Blob([html], { type: "text/html" });
+  //   const dataUrl = await blobToDataURL(blob);
+  //   chrome.downloads.download({
+  //     url: dataUrl,
+  //     filename: `${folderName}/${localEncode(dataUrl)}.html`,
+  //     saveAs: false,
+  //     conflictAction: "overwrite",
+  //   });
+  // } catch (error) {
+  //   console.error(`${tab.url} failed to save `, error);
+  // }
+
+  const references = unfilteredReferences.filter((reference) => {
+    return reference.toLowerCase().includes(filter)
+      && !crawled.has(reference.split('?')[0]);
+  });
+
+  var counter = 1;
+  const crawlPromises = references.map((reference) => {
+    return new Promise((resolve) => {
+      chrome.tabs.create(
+        { url: reference, active: false, pinned: true },
+        async (tabOfReference) => {
+          const count = await crawl(
+            tabOfReference,
+            dependenciesCollection,
+            folderName,
+            filter,
+            crawled
+          );
+          counter += count;
+          resolve();
+        }
+      );
+    });
+  });
+
+  await Promise.all(crawlPromises);
+  console.log("Closing: ", tab.url, counter);
+  chrome.tabs.remove(tab.id);
+  return counter;
 }
 
 export async function downloadDependencies(dependenciesCollection, folderName) {

@@ -1,11 +1,20 @@
-import { crawl } from "./scripts/offlinifying.js";
+import { crawl, downloadDependencies } from "./scripts/offlinifying.js";
 import { notify } from "./scripts/interactions.js";
 
 chrome.action.onClicked.addListener(async function (tab) {
   if (!tab.url || tab.url.startsWith("chrome://")) {
-    notify("Error", "This page cannot be downloaded!");
+    await notify("Error", "This page cannot be downloaded!");
     return;
   }
 
-  const counter = await crawl(tab, new Set(), "Offlinified");
+  const TARGET_DIR = "Offlinified";
+
+  var dependenciesCollection = new Set();
+  const pageCount = await crawl(tab, dependenciesCollection, TARGET_DIR);
+  await notify(
+    "Offlinifying",
+    `${pageCount} pages downloaded, now resolving ${dependenciesCollection.size} dependencies`, `root: ${tab.url}`
+  );
+
+  // downloadDependencies(dependenciesCollection, TARGET_DIR);
 });

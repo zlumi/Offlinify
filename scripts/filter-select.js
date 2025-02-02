@@ -79,8 +79,18 @@ document.getElementById("filter").addEventListener("input", function () {
 document.getElementById("filter").addEventListener("keypress", function (event) {
   if (event.key === "Enter") {
     const filter = this.value.toLowerCase();
-    chrome.runtime.sendMessage({ filter }, () => {
-      window.close();
+    chrome.runtime.sendMessage({ filter }, (response) => {
+      if (response.filter === filter) {
+        window.close();
+      } else {
+        console.error("Critical application internal error!");
+      }
     });
+  }
+});
+
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") {
+    window.close();
   }
 });
