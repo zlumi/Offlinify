@@ -16,5 +16,11 @@ chrome.action.onClicked.addListener(async function (tab) {
     `${pageCount} pages downloaded, now resolving ${dependenciesCollection.size} dependencies`, `root: ${tab.url}`
   );
 
-  // downloadDependencies(dependenciesCollection, TARGET_DIR);
+  await downloadDependencies(dependenciesCollection, TARGET_DIR);
+  
+  notify(
+    "Completed",
+    `Downloaded ${pageCount} pages and ${dependenciesCollection.size} dependencies`,
+    `root: ${tab.url}`
+  );
 });
