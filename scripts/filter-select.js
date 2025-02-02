@@ -75,3 +75,12 @@ function filterLinks(query) {
 document.getElementById("filter").addEventListener("input", function () {
   filterLinks(this.value.toLowerCase());
 });
+
+document.getElementById("filter").addEventListener("keypress", function (event) {
+  if (event.key === "Enter") {
+    const filter = this.value.toLowerCase();
+    chrome.runtime.sendMessage({ filter }, () => {
+      window.close();
+    });
+  }
+});

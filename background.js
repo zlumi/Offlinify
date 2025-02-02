@@ -1,7 +1,5 @@
-import { downloadSinglePage } from "./service-workers/offlinifying.js";
-import { setupInteractions, notify } from "./service-workers/interactions.js";
-
-setupInteractions();
+import { crawl } from "./scripts/offlinifying.js";
+import { notify } from "./scripts/interactions.js";
 
 chrome.action.onClicked.addListener(async function (tab) {
   if (!tab.url || tab.url.startsWith("chrome://")) {
@@ -9,16 +7,5 @@ chrome.action.onClicked.addListener(async function (tab) {
     return;
   }
 
-  const references = await downloadSinglePage(tab);
-
-  // crawling will be handled through the popup js
-  const referencesParam = encodeURIComponent(JSON.stringify(references));
-  const popupUrl = `pages/filter-select.html?references=${referencesParam}`;
-  chrome.windows.create({
-    url: popupUrl,
-    type: "popup",
-    focused: true,
-    width: 500,
-    height: 700
-  });
+  const counter = await crawl(tab, new Set(), "Offlinified");
 });

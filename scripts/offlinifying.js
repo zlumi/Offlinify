@@ -1,3 +1,5 @@
+import { notify } from "./interactions.js";
+
 function localEncode(path) {
   return path
     .replace(/^https?:\/\//, "")
@@ -14,10 +16,12 @@ async function blobToDataURL(blob) {
   });
 }
 
-export async function downloadSinglePage(tab) {
+export async function crawl(tab, dependenciesCollection, folderName, filter = null) {
   let [jsInject] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: () => {
+      // 1 - Find all dependencies
+
       const findDependencies = (document, attribute, query) => {
         return new Set(
           Array.from(document.querySelectorAll(query))
@@ -37,6 +41,9 @@ export async function downloadSinglePage(tab) {
       );
       const dependencies = [...hrefDependencies, ...srcDependencies];
 
+
+      // 2 - Get the HTML of the page without relative URLs
+
       const getAbsoluteOuterHTML = () => {
         const docClone = document.documentElement.cloneNode(true);
         const baseURL = window.location.origin;
@@ -46,7 +53,7 @@ export async function downloadSinglePage(tab) {
             const url = node.getAttribute(attr);
             if (
               url &&
-              !url.startsWith("http") &&
+              !url.startsWith("http:") &&
               !url.startsWith("data:") &&
               !url.startsWith("javascript:")
             ) {
@@ -66,66 +73,76 @@ export async function downloadSinglePage(tab) {
       };
       const html = getAbsoluteOuterHTML();
 
-      let references = Array.from(
-        new Set(
-          Array.from(document.querySelectorAll("a[href]")).map((a) => a.href)
-        )
-      );
+      console.log(html, dependencies);
 
-      return { html, references, dependencies };
+      const unfilteredReferences = Array.from(document.querySelectorAll("a[href]"))
+        .map((a) => a.href)
+
+      return { html, unfilteredReferences, dependencies };
     },
   });
 
-  const { html, references, dependencies } = jsInject.result;
+  const { unfilteredReferences } = jsInject.result;
 
-  const url = new URL(tab.url);
-  const folderName =
-    localEncode(url.hostname) + "/" + localEncode(url.pathname);
+  if (!filter) { 
+    const referencesParam = encodeURIComponent(JSON.stringify(unfilteredReferences));
+    const popupUrl = `pages/filter-select.html?references=${referencesParam}`;
+    chrome.windows.create({
+      url: popupUrl,
+      type: "popup",
+      focused: true,
+      width: 500,
+      height: 700
+    }, (popupWindow) => {
+      const popupWindowId = popupWindow.id;
 
-  var newHtml = html;
+      const filterSubmissionListener = async (message, sender, sendResponse) => {
+        if (message.filter) {
+          filter = message.filter;
+        }
+      };
 
-  for (const dependency of dependencies) {
+      chrome.runtime.onMessage.addListener(filterSubmissionListener);
+
+      chrome.windows.onRemoved.addListener(function windowCloseListener(windowId) {
+        if (windowId === popupWindowId) {
+          chrome.runtime.onMessage.removeListener(filterSubmissionListener);
+          chrome.windows.onRemoved.removeListener(windowCloseListener);
+          if (!filter) {
+            notify("Offlinifying", "Cancelled (no filter selected)");
+            return;
+          } else {
+            notify("Offlinifying", `Filter: ${filter}`, tab.url);
+          }
+        }
+      });
+    });
+
+    while (!filter) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
+
+  console.log(filter);
+
+  // TODO:
+  // FILTER,
+  // CRAWL RECURSIVELY (WHILE DOWNLOADING THE HTMLS& REPATHING DEPENDENCIES),
+  // DOWNLOAD DEPENDENCIES
+}
+
+export async function downloadDependencies(dependenciesCollection, folderName) {
+  for (const dependency of dependenciesCollection) {
     try {
-      const response = await fetch(dependency);
-      const blob = await response.blob();
-      const dataUrl = await blobToDataURL(blob);
-      const fileName = localEncode(dependency.split("?")[0]);
-
+      const fileName = localEncode(dependency);
       chrome.downloads.download({
-        url: dataUrl,
+        url: await blobToDataURL(await await fetch(dependency).blob()),
         filename: `${folderName}/assets/${fileName}`,
         saveAs: false,
         conflictAction: "overwrite",
       });
-      newHtml = newHtml.replace(dependency, `assets/${fileName}`);
     } catch (error) {
       console.error("download failed! ", dependency, error);
     }
   }
-
-  try {
-    const blob = new Blob([newHtml], { type: "text/html" });
-    const dataUrl = await blobToDataURL(blob);
-    chrome.downloads.download({
-      url: dataUrl,
-      filename: `${folderName}/index.html`,
-      saveAs: false,
-      conflictAction: "overwrite",
-    }, (downloadId) => {
-      chrome.downloads.onChanged.addListener(function downloadedListener({ id, state }) {
-        if (id === downloadId && state) {
-          if (state.current === "complete") {
-            chrome.downloads.onChanged.removeListener(downloadedListener);
-            chrome.downloads.show(downloadId);
-          }
-          if (state.current === "complete" || state.current === "interrupted")
-            chrome.downloads.onChanged.removeListener(downloadedListener);
-        }
-      });
-    });
-  } catch (error) {
-    console.error("html failed to save! ", error);
-  }
-
-  return references;
 }
